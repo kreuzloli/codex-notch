@@ -33,7 +33,7 @@ fn main() {
                 window_background: WindowBackgroundAppearance::Transparent, // 背景透明
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| NotchView),
+            |_, cx| cx.new(|_| NotchView::default()),
         )
         .expect("Init window failed");
         // cx.activate(true); 把应用切到前台。
