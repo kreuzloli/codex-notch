@@ -5,9 +5,11 @@ use gpui::{
 
 use super::pet::pet;
 use super::session_card::session_card;
+use crate::common::constants::constants;
 use crate::enums::island_mode::IslandMode;
 use crate::enums::session_phase::SessionPhase;
 use crate::models::session::Session;
+use crate::socket;
 
 /// 灵动岛的根视图，保存悬停和展开状态。
 pub struct NotchView {
@@ -25,23 +27,40 @@ impl Default for NotchView {
             mode: IslandMode::Compact,
             look_x: 0.0,
             look_y: 0.0,
-            sessions: vec![
-                Session {
-                    id: String::from("demo-1"),
-                    project_name: String::from("codex-notch"),
-                    phase: SessionPhase::Working,
-                },
-                Session {
-                    id: String::from("demo-2"),
-                    project_name: String::from("osb-service"),
-                    phase: SessionPhase::AwaitingApproval,
-                },
-            ],
+            sessions: Vec::<Session>::new(),
         }
     }
 }
 
 impl NotchView {
+    /// 创建视图，并接收后台线程发送的一次演示状态。
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        let (sender, receiver) = async_channel::unbounded::<(String, SessionPhase)>();
+        /// 创建视图，启动 socket 监听并异步接收会话状态。
+        socket::start_listener(sender).expect("启动 socket 监听失败");
+        // 只在绑定成功后注册清理，避免启动失败时删除其它进程的 socket。
+        cx.on_app_quit(|_view, _cx| async {
+            if let Err(err) = std::fs::remove_file(constants::SOCKET_PATH) {
+                eprintln!("清理 socket 文件失败：{err}");
+            }
+        })
+        .detach();
+        cx.spawn(async move |view, cx| {
+            while let Ok((session_id, phase)) = receiver.recv().await {
+                if view
+                    .update(cx, |view, cx| {
+                        view.update_session_phase(&session_id, phase);
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        Self::default()
+    }
     /// 注册窗口退出事件，清除悬停状态。
     fn mouse_exit_listener(&self, cx: &mut Context<Self>) -> impl IntoElement {
         // 离开整个窗口时，清除元素回调可能遗留的悬停状态。
@@ -76,6 +95,13 @@ impl NotchView {
             .find(|session| session.id == session_id)
         {
             session.phase = phase;
+        } else {
+            // 当前模拟协议没有项目名，先用会话编号作为展示名称。
+            self.sessions.push(Session {
+                id: session_id.to_owned(),
+                project_name: session_id.to_owned(),
+                phase,
+            });
         }
     }
 }
@@ -169,25 +195,6 @@ impl Render for NotchView {
                                                     .map(|session| session_card(session)),
                                             ),
                                         ),
-                                    )
-                                    .child(
-                                        div()
-                                            .id("simulate-resume-button")
-                                            .px_3()
-                                            .py_1()
-                                            .rounded_md()
-                                            .bg(rgb(0x27272a))
-                                            .text_sm()
-                                            .cursor_pointer()
-                                            .on_click(cx.listener(|view, _event, _window, cx| {
-                                                cx.stop_propagation();
-                                                view.update_session_phase(
-                                                    "demo-2",
-                                                    SessionPhase::Working,
-                                                );
-                                                cx.notify();
-                                            }))
-                                            .child("Simulate resume"),
                                     )
                                     .child(
                                         div()

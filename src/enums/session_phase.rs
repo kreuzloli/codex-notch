@@ -10,6 +10,15 @@ pub(crate) enum SessionPhase {
 }
 
 impl SessionPhase {
+    /// socket 协议中的状态文字转换为应用状态。
+    pub(crate) fn from_text(text: &str) -> Option<Self> {
+        match text {
+            "working" => Some(Self::Working),
+            "awaiting_approval" => Some(Self::AwaitingApproval),
+            "finished" => Some(Self::Finished),
+            _ => None,
+        }
+    }
     /// 返回界面展示的状态文字。
     pub(crate) fn label(self) -> &'static str {
         match self {

@@ -2,4 +2,6 @@
 mod enums;
 mod ui;
 pub use ui::NotchView;
+mod common;
 mod models;
+mod socket;

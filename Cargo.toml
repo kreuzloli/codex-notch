@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 gpui = "0.2.2"
+async-channel = "2.5"
