@@ -1,9 +1,8 @@
-mod ui;
+use codex_notch::NotchView;
 use gpui::{
     App, AppContext, Application, Bounds, WindowBackgroundAppearance, WindowBounds, WindowKind,
     WindowOptions, point, px, size,
 };
-use ui::NotchView;
 
 /// 启动事件循环，并创建承载根视图的窗口。
 /// - Application::new().run(...)：启动应用事件循环，持续处理点击、窗口和绘制事件。
