@@ -9,7 +9,7 @@ use crate::common::constants::constants;
 use crate::enums::island_mode::IslandMode;
 use crate::enums::session_phase::SessionPhase;
 use crate::models::session::Session;
-use crate::socket;
+use crate::socket::{self, SessionUpdate};
 
 /// 灵动岛的根视图，保存悬停和展开状态。
 pub struct NotchView {
@@ -35,8 +35,8 @@ impl Default for NotchView {
 impl NotchView {
     /// 创建视图，并接收后台线程发送的一次演示状态。
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let (sender, receiver) = async_channel::unbounded::<(String, SessionPhase)>();
-        /// 创建视图，启动 socket 监听并异步接收会话状态。
+        let (sender, receiver) = async_channel::unbounded::<SessionUpdate>();
+        // 创建视图，启动 socket 监听并异步接收会话状态。
         socket::start_listener(sender).expect("启动 socket 监听失败");
         // 只在绑定成功后注册清理，避免启动失败时删除其它进程的 socket。
         cx.on_app_quit(|_view, _cx| async {
@@ -46,10 +46,10 @@ impl NotchView {
         })
         .detach();
         cx.spawn(async move |view, cx| {
-            while let Ok((session_id, phase)) = receiver.recv().await {
+            while let Ok(update) = receiver.recv().await {
                 if view
                     .update(cx, |view, cx| {
-                        view.update_session_phase(&session_id, phase);
+                        view.update_session(update);
                         cx.notify();
                     })
                     .is_err()
@@ -88,19 +88,20 @@ impl NotchView {
     }
 
     /// 更新指定会话的状态，其它会话保持原样。
-    fn update_session_phase(&mut self, session_id: &str, phase: SessionPhase) {
+    fn update_session(&mut self, update: SessionUpdate) {
         if let Some(session) = self
             .sessions
             .iter_mut()
-            .find(|session| session.id == session_id)
+            .find(|session| session.id == update.session_id)
         {
-            session.phase = phase;
+            session.project_name = update.project_name;
+            session.phase = update.phase;
         } else {
             // 当前模拟协议没有项目名，先用会话编号作为展示名称。
             self.sessions.push(Session {
-                id: session_id.to_owned(),
-                project_name: session_id.to_owned(),
-                phase,
+                id: update.session_id,
+                project_name: update.project_name,
+                phase: update.phase,
             });
         }
     }
@@ -188,12 +189,40 @@ impl Render for NotchView {
                             .when(matches!(self.mode, IslandMode::Expanded), |panel| {
                                 panel
                                     .child(
-                                        div().text_sm().text_color(rgb(0xa1a1aa)).child(
-                                            div().flex().flex_col().gap_2().children(
-                                                self.sessions
-                                                    .iter()
-                                                    .map(|session| session_card(session)),
+                                        div()
+                                            .id("session-list")
+                                            .max_h(px(140.0))
+                                            .overflow_y_scroll()
+                                            .text_sm()
+                                            .text_color(rgb(0xa1a1aa))
+                                            .child(
+                                                div().flex().flex_col().gap_2().children(
+                                                    self.sessions
+                                                        .iter()
+                                                        .map(|session| session_card(session)),
+                                                ),
                                             ),
+                                    )
+                                    .child(
+                                        div().flex().items_center().gap_2().child(
+                                            div()
+                                                .id("clear-finished-button")
+                                                .px_3()
+                                                .py_1()
+                                                .rounded_md()
+                                                .bg(rgb(0x27272a))
+                                                .text_sm()
+                                                .cursor_pointer()
+                                                .on_click(cx.listener(
+                                                    |view, _event, _window, cx| {
+                                                        cx.stop_propagation();
+                                                        view.sessions.retain(|session| {
+                                                            session.phase != SessionPhase::Finished
+                                                        });
+                                                        cx.notify();
+                                                    },
+                                                ))
+                                                .child("clear finished session"),
                                         ),
                                     )
                                     .child(

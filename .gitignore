@@ -24,3 +24,4 @@
 /examples
 *.un~
 .swp
+.codex/

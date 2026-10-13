@@ -4,9 +4,9 @@
 
 用 Rust 和 GPUI 构建的 macOS 刘海桌面伴侣，复刻 [Coucou](https://github.com/Louis-CFM/coucou) 的视觉与交互，专注于 Codex CLI。
 
-在屏幕顶部查看 Codex 的工作状态、切换会话、处理审批，并让宠物随着任务进度做出反应。继续使用现有 Codex CLI 和官方登录流程。
+目标是在屏幕顶部查看 Codex 的工作状态、切换会话、处理审批，并让宠物随着任务进度做出反应。继续使用现有 Codex CLI 和官方登录流程。
 
-> 当前处于工程搭建阶段，已初始化 Cargo 工程，尚未实现图形界面。以下功能均为开发目标。
+> 当前已实现 GPUI 顶部透明窗口、宠物绘制与眼神跟随、展开/收起交互，以及通过 Unix socket 更新多会话卡片。当前使用自定义模拟协议，尚未接入真实 Codex 事件、审批或额度查询。
 
 ## 项目范围
 
@@ -36,13 +36,14 @@
 | --- | --- |
 | [GPUI](https://gpui.rs/) | 界面布局、任务列表、审批卡、设置页、宠物绘制与动画 |
 | Rust | 会话状态、事件处理、配置和进程管理 |
-| tokio | Unix socket 通信和后台异步任务 |
-| serde / serde_json | Hook 事件、IPC 消息和配置的序列化 |
-| objc2 / AppKit | 补充菜单栏、刘海屏幕几何和特殊窗口行为等 macOS 能力 |
+| std::os::unix::net / std::thread | Unix socket 监听与客户端消息读取 |
+| async-channel | 将后台线程收到的会话更新传递给 GPUI 异步任务 |
+| serde / serde_json（计划） | 事件、IPC 消息和配置的序列化 |
+| objc2 / AppKit（计划） | 补充菜单栏、刘海屏幕几何和特殊窗口行为等 macOS 能力 |
 
-GPUI 管理窗口和事件循环，macOS 适配层只补充必要的原生能力。界面与后台任务分开，避免通信和额度查询阻塞交互。具体依赖版本将在首次可编译实现时固定。
+当前直接依赖 GPUI 0.2.2 和 async-channel 2.5。socket 读取运行在后台线程，GPUI 异步任务通过通道接收消息并刷新视图。serde / serde_json 和 objc2 / AppKit 属于后续方案，尚未引入。
 
-## 工作方式
+## 后续接入方案（待验证）
 
 ```mermaid
 flowchart LR
@@ -56,26 +57,69 @@ flowchart LR
     UI --> Native[macOS 原生适配]
 ```
 
-Hook relay 转发 Codex 事件，并在审批时返回用户决定。额度通过官方 `codex app-server` 查询。具体 Hook 字段和审批协议需要结合实际 Codex CLI 版本验证。
+上图是后续接入设想。真实事件来源、Hook relay、审批回传和额度查询方式，均需结合实际 Codex CLI 版本及官方支持核实。
 
 ## 开发进度
 
-- [x] 确定 macOS + Codex CLI 的项目范围
-- [x] 确定 GPUI 技术路线
-- [x] 调研 Coucou 的窗口、状态机、宠物及 Codex 接入实现
-- [ ] 验证 GPUI 透明窗口、顶部定位、焦点、鼠标穿透和多屏行为
-- [ ] 实现灵动岛布局、宠物绘制和基础交互
-- [ ] 接入 Codex Hooks 与多会话状态
+- [x] 确定 macOS + Codex CLI 的项目范围与 GPUI 技术路线
+- [x] 实现顶部透明、无边框窗口
+- [x] 实现紧凑/展开布局、宠物绘制与眼神跟随
+- [x] 实现多会话卡片与列表滚动
+- [x] 实现 Unix socket 模拟消息接入与正常退出清理
+- [x] 实现按会话编号更新项目名和状态
+- [ ] 验证鼠标穿透和多屏行为
+- [ ] 实现宠物动画
+- [ ] 接入真实 Codex 事件
 - [ ] 实现审批、额度和终端跳转
-- [ ] 完成菜单栏、设置与 macOS 实机验证
+- [ ] 完成菜单栏与设置
 
-目前可以运行基础入口：
+## 运行与模拟验证
+
+在项目根目录启动应用：
 
 ```sh
 cargo run
 ```
 
-当前仅输出 `Hello, world!`，尚未添加 GPUI 或接入 Codex。图形界面的构建与使用说明会随实现补充。
+另开终端连接 socket：
+
+```sh
+nc -U /tmp/codex-notch.sock
+```
+
+每行发送一条消息，格式为：
+
+```text
+会话编号|项目名|状态
+```
+
+例如：
+
+```text
+demo-1|codex-notch|working
+demo-2|Rust学习|awaiting_approval
+demo-1|codex-notch|finished
+```
+
+当前支持 `working`、`awaiting_approval`、`finished` 三种输入状态。编号和项目名不能为空，也不能包含分隔符 `|` 或换行。旧的两段格式 `编号|状态` 已不再支持。
+
+合法消息入通道后回复 `ok`；非法消息回复 `error: 原因`，连接保持可用。`ok` 表示消息已进入通道，界面随后异步更新。
+
+相同编号更新已有卡片的项目名和状态，不同编号新增卡片。点击岛展开列表，使用滚轮或触控板查看更多卡片，通过 `Collapse` 收起。
+
+会话仅保存在内存中。客户端断开后保留卡片，应用重启后清空。
+
+运行解析测试：
+
+```sh
+cargo test --lib socket::tests
+```
+
+正常应用退出会清理 socket 文件。使用 Ctrl+C 或强制结束后，若下次启动提示地址被占用，先确认旧应用进程已停止，再手动清理：
+
+```sh
+rm /tmp/codex-notch.sock
+```
 
 ## 设计文档
 
