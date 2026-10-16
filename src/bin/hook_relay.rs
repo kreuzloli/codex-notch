@@ -30,8 +30,10 @@ fn main() -> io::Result<()> {
     );
     // 将Codex 事件转换为现有socket协议中的状态
     let phase = match event.hook_event_name.as_str() {
-        "UserPromptSubmit" => "working",
+        "UserPromptSubmit" | "PostToolUse" => "working",
+        "PermissionRequest" => "awaiting_approval",
         "Stop" => "finished",
+        "Interrupt" => "idle",
         _ => return Ok(()),
     };
     eprintln!("event：{}，phase：{phase}", event.hook_event_name);
@@ -50,7 +52,23 @@ fn main() -> io::Result<()> {
     let message = format!("{}|{}|{}\n", event.session_id, project_name, phase);
     eprintln!("待发送消息：{}", message.trim_end());
     // 链接灵动岛，并限制通信等待时间
-    let mut stream = UnixStream::connect("/tmp/codex-notch.sock")?;
+    let mut stream = match UnixStream::connect("/tmp/codex-notch.sock") {
+        Ok(stream) => stream,
+        Err(err)
+            if matches!(
+                err.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) =>
+        {
+            // 灵动岛未运行时，跳过展示更新，正常结束 Hook。
+            eprintln!("灵动岛未运行，跳过状态转发");
+            if event.hook_event_name == "Stop" {
+                println!("{{}}");
+            }
+            return Ok(());
+        }
+        Err(err) => return Err(err),
+    };
     let timeout = Some(Duration::from_secs(1));
     stream.set_read_timeout(timeout)?;
     stream.set_write_timeout(timeout)?;

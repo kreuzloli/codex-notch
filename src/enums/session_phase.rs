@@ -16,6 +16,7 @@ impl SessionPhase {
             "working" => Some(Self::Working),
             "awaiting_approval" => Some(Self::AwaitingApproval),
             "finished" => Some(Self::Finished),
+            "idle" => Some(Self::Idle),
             _ => None,
         }
     }

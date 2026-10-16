@@ -204,47 +204,50 @@ impl Render for NotchView {
                                             ),
                                     )
                                     .child(
-                                        div().flex().items_center().gap_2().child(
-                                            div()
-                                                .id("clear-finished-button")
-                                                .px_3()
-                                                .py_1()
-                                                .rounded_md()
-                                                .bg(rgb(0x27272a))
-                                                .text_sm()
-                                                .cursor_pointer()
-                                                .on_click(cx.listener(
-                                                    |view, _event, _window, cx| {
+                                        div().flex().items_center().gap_2()
+                                            .child(
+                                                div().flex().items_center().gap_2().child(
+                                                    div()
+                                                        .id("clear finished")
+                                                        .px_3()
+                                                        .py_1()
+                                                        .rounded_md()
+                                                        .bg(rgb(0x27272a))
+                                                        .text_sm()
+                                                        .cursor_pointer()
+                                                        .on_click(cx.listener(
+                                                            |view, _event, _window, cx| {
+                                                                cx.stop_propagation();
+                                                                view.sessions.retain(|session| {
+                                                                    session.phase != SessionPhase::Finished
+                                                                });
+                                                                cx.notify();
+                                                            },
+                                                        ))
+                                                        .child("clear finished session"),
+                                                ),
+                                            )
+                                            .child(
+                                                div()
+                                                    .id("collapse-button")
+                                                    .px_3() // 左右内边距
+                                                    .py_1() // 上下内边距
+                                                    .rounded_md() // 圆角
+                                                    .bg(rgb(0x27272a))
+                                                    .text_sm()
+                                                    .cursor_pointer()
+                                                    .on_click(cx.listener(|view, _event, window, cx| {
+                                                        // 收起后，不再让这次点击触发父元素的展开逻辑。
                                                         cx.stop_propagation();
-                                                        view.sessions.retain(|session| {
-                                                            session.phase != SessionPhase::Finished
-                                                        });
+                                                        view.mode = IslandMode::Compact;
+                                                        window.resize(size(
+                                                            px(280.0),
+                                                            px(view.mode.height()),
+                                                        ));
                                                         cx.notify();
-                                                    },
-                                                ))
-                                                .child("clear finished session"),
-                                        ),
-                                    )
-                                    .child(
-                                        div()
-                                            .id("collapse-button")
-                                            .px_3() // 左右内边距
-                                            .py_1() // 上下内边距
-                                            .rounded_md() // 圆角
-                                            .bg(rgb(0x27272a))
-                                            .text_sm()
-                                            .cursor_pointer()
-                                            .on_click(cx.listener(|view, _event, window, cx| {
-                                                // 收起后，不再让这次点击触发父元素的展开逻辑。
-                                                cx.stop_propagation();
-                                                view.mode = IslandMode::Compact;
-                                                window.resize(size(
-                                                    px(280.0),
-                                                    px(view.mode.height()),
-                                                ));
-                                                cx.notify();
-                                            }))
-                                            .child("‌Collapse"),
+                                                    }))
+                                                    .child("‌Collapse"),
+                                            )
                                     )
                             }),
                     ),

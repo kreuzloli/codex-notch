@@ -6,26 +6,27 @@ use gpui::{
 
 /// 构建静态宠物：圆角身体和两只眼睛。
 pub(crate) fn pet(hovered: bool, look_x: f32, look_y: f32) -> impl IntoElement {
-    div()
-        .w(px(40.0))
-        .h(px(40.0))
-        .rounded(px(14.0))
-        .bg(rgb(0xededef))
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(eyes(hovered, look_x, look_y))
-        .with_animation(
-            "pet-breathing",
-            Animation::new(Duration::from_secs(2))
-                .repeat() // 循环播放
-                // bounce 让进度从 0 → 1 → 0 往返，这里不是物理弹跳
-                .with_easing(bounce(ease_in_out)),
-            |body, progress| {
-                // progress 经过缓动处理后的进度，用来计算当前高度
-                body.h(px(40.0 + 2.0 * progress))
-            },
-        )
+    div().w(px(40.0)).h(px(42.0)).flex_shrink_0().child(
+        div()
+            .absolute()
+            .left(px(0.0))
+            .bottom(px(0.0))
+            .w(px(40.0))
+            .h(px(40.0))
+            .rounded(px(14.0))
+            .bg(rgb(0xffffff))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(eyes(hovered, look_x, look_y))
+            .with_animation(
+                "pet-breathing",
+                Animation::new(Duration::from_secs(2))
+                    .repeat()
+                    .with_easing(bounce(ease_in_out)),
+                |body, progress| body.h(px(40.0 + 2.0 * progress)),
+            ),
+    )
 }
 
 /// 两只眼睛共用一个动画进度，保持眨眼同步。
